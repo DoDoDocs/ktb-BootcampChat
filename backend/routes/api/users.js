@@ -28,10 +28,23 @@ router.post('/profile-image',
   userController.uploadProfileImage
 );
 
+// 프로필 이미지URL 업로드
+router.post('/profile-imageURL',
+  auth,
+  upload.single('profileImage'),
+  userController.uploadProfileImageURL
+);
+
 // 프로필 이미지 삭제
 router.delete('/profile-image',
   auth,
   userController.deleteProfileImage
+);
+
+// 프로필 이미지URL 삭제
+router.delete('/profile-imageURL',
+  auth,
+  userController.deleteProfileImageURL
 );
 
 // 회원 탈퇴

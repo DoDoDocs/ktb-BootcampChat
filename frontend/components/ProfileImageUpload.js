@@ -121,38 +121,34 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
 
       // 파일 업로드 및 URL 가져오기
       const uploadedUrl = await uploadImage(file, user.id);
+      console.log('S3에 업로드된 URL:', uploadedUrl);
 
-      // // FormData 생성
-      // const formData = new FormData();
-      // formData.append('profileImage', file);
+      // 서버에 URL 전송
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile-imageURL`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': user.token,
+          'x-session-id': user.sessionId,
+        },
+        body: JSON.stringify({
+          profileImage: uploadedUrl, // S3 URL 전달
+        }),
+      });
 
-      // // 파일 업로드 요청
-      // const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile-image`, {
-      //   method: 'POST',
-      //   headers: {
-      //     'x-auth-token': user.token,
-      //     'x-session-id': user.sessionId
-      //   },
-      //   body: formData
-      // });
-
-      // if (!response.ok) {
-      //   const errorData = await response.json();
-      //   throw new Error(errorData.message || '이미지 업로드에 실패했습니다.');
-      // }
-
-      // const data = await response.json();
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '서버 요청 실패');
+      }
       
       // 로컬 스토리지의 사용자 정보 업데이트
       const updatedUser = {
         ...user,
-        // profileImage: data.imageUrl
         profileImage: uploadedUrl
       };
       localStorage.setItem('user', JSON.stringify(updatedUser));
 
       // 부모 컴포넌트에 변경 알림
-      // onImageChange(data.imageUrl);
       onImageChange(uploadedUrl);
 
       // 전역 이벤트 발생
@@ -185,20 +181,20 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
         throw new Error('인증 정보가 없습니다.');
       }
 
-      // const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile-image`, {
-      //   method: 'DELETE',
-      //   headers: {
-      //     'x-auth-token': user.token,
-      //     'x-session-id': user.sessionId
-      //   }
-      // });
-
-      // if (!response.ok) {
-      //   const errorData = await response.json();
-      //   throw new Error(errorData.message || '이미지 삭제에 실패했습니다.');
-      // }
-
       await deleteImage(previewUrl);
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile-imageURL`, {
+        method: 'DELETE',
+        headers: {
+          'x-auth-token': user.token,
+          'x-session-id': user.sessionId
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '이미지 삭제에 실패했습니다.');
+      }
 
       // 로컬 스토리지의 사용자 정보 업데이트
       const updatedUser = {

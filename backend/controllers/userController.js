@@ -251,6 +251,30 @@ exports.uploadProfileImage = async (req, res) => {
   }
 };
 
+// 프로필 이미지URL 업로드
+exports.uploadProfileImageURL = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: '사용자를 찾을 수 없습니다.' });
+    }
+
+    const { profileImage } = req.body;
+    if (!profileImage) {
+      return res.status(400).json({ message: '프로필 이미지 URL이 제공되지 않았습니다.' });
+    }
+
+    // S3 URL을 DB에 저장
+    user.profileImage = profileImage;
+    await user.save();
+
+    res.status(200).json({ message: '프로필 이미지 URL 저장 성공', profileImage });
+  } catch (error) {
+    console.error('프로필 이미지 URL 저장 실패:', error);
+    res.status(500).json({ message: '프로필 이미지 URL 저장 실패' });
+  }
+};
+
 // 프로필 이미지 삭제
 exports.deleteProfileImage = async (req, res) => {
   try {
@@ -286,6 +310,26 @@ exports.deleteProfileImage = async (req, res) => {
       success: false,
       message: '프로필 이미지 삭제 중 오류가 발생했습니다.'
     });
+  }
+};
+
+// 프로필 이미지URL 삭제
+exports.deleteProfileImageURL = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: '사용자를 찾을 수 없습니다.' });
+    }
+
+    if (user.profileImage) {
+      user.profileImage = '';
+      await user.save();
+    }
+
+    res.status(200).json({ message: '프로필 이미지 URL 삭제 성공' });
+  } catch (error) {
+    console.error('프로필 이미지 URL 삭제 실패:', error);
+    res.status(500).json({ message: '프로필 이미지 URL 삭제 실패' });
   }
 };
 
