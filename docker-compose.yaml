@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: hyesushim/boo-test-fe:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  backend:
+    image: hyesushim/boo-test-be:latest
+    ports:
+      - "5000:5000"
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/bootcampchat
+      JWT_SECRET: your_jwt_token
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OPENAI_API_KEY: **********
+      ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      PASSWORD_SALT: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      PORT: 5000
+    depends_on:
+      - mongodb
+      - redis
+
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+  redis:
+    image: redis:7.0
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"] # 데이터 영구 저장 옵션
+
+volumes:
+  mongodb_data:
