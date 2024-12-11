@@ -3,8 +3,9 @@ node_modules/
 dist/
 build/
 .npmrc
-.env.local
 .env
+.env.local
+.env.production
 backend/uploads
 
 # Next.js
@@ -26,3 +27,5 @@ Thumbs.db
 
 # VSCode settings
 .vscode/
+
+*.pem
