@@ -5,6 +5,22 @@ import { Camera, X } from 'lucide-react';
 import authService from '../services/authService';
 import PersistentAvatar from './common/PersistentAvatar';
 
+import AWS from 'aws-sdk';
+
+const AWS_REGION = process.env.NEXT_PUBLIC_AWS_REGION;
+const AWS_ACCESS_KEY_ID=process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID;
+const AWS_SECRET_ACCESS_KEY=process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY
+const S3_BUCKET=process.env.NEXT_PUBLIC_S3_BUCKET
+
+AWS.config.update({
+  region: AWS_REGION,
+  accessKeyId: AWS_ACCESS_KEY_ID,
+  secretAccessKey: AWS_SECRET_ACCESS_KEY
+})
+
+// S3 인스턴스 생성
+const s3 = new AWS.S3();
+
 const ProfileImageUpload = ({ currentImage, onImageChange }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [error, setError] = useState('');
@@ -24,6 +40,56 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
     const imageUrl = getProfileImageUrl(currentImage);
     setPreviewUrl(imageUrl);
   }, [currentImage]);
+
+  // S3에 이미지 업로드하는 함수
+  const uploadImage = async (file, userId) => {
+    const params = {
+      Bucket: S3_BUCKET,
+      Key: `images/${userId}/${file.name}`, // 경로 설정
+      Body: file,
+      ContentType: file.type,
+    };
+  
+    try {
+      const data = await s3.upload(params).promise();
+      console.log("파일 업로드 성공:", data.Location);
+      return data.Location; // 업로드된 파일의 URL 반환
+    } catch (err) {
+      console.error("파일 업로드 실패:", err);
+      throw err; // 에러를 호출한 함수로 전달
+    }
+  };
+
+  const deleteImage = async (fileUrl) => {
+    try {
+      const baseUrl = `https://${S3_BUCKET}.s3.${AWS_REGION}.amazonaws.com/`;
+
+      // Key 추출
+      if (!fileUrl.startsWith(baseUrl)) {
+        throw new Error('S3 버킷 URL과 일치하지 않습니다.');
+      }
+  
+      // URL 디코딩 및 Key 추출
+      const encodedKey = fileUrl.replace(baseUrl, ''); // baseUrl 제거
+      const decodedKey = decodeURIComponent(encodedKey); // URL 디코딩
+  
+      console.log('@@@deleteImage fileUrl, decodedKey', fileUrl, decodedKey);
+  
+      const params = {
+        Bucket: S3_BUCKET,
+        Key: decodedKey,
+      };
+  
+      // S3에서 객체 삭제
+      await s3.deleteObject(params).promise();
+      console.log('이미지 삭제 성공:', decodedKey);
+    } catch (err) {
+      console.error('이미지 삭제 실패:', err);
+      throw new Error('S3에서 이미지를 삭제하는 데 실패했습니다.');
+    }
+  };
+  
+
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -53,36 +119,41 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
         throw new Error('인증 정보가 없습니다.');
       }
 
-      // FormData 생성
-      const formData = new FormData();
-      formData.append('profileImage', file);
+      // 파일 업로드 및 URL 가져오기
+      const uploadedUrl = await uploadImage(file, user.id);
 
-      // 파일 업로드 요청
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile-image`, {
-        method: 'POST',
-        headers: {
-          'x-auth-token': user.token,
-          'x-session-id': user.sessionId
-        },
-        body: formData
-      });
+      // // FormData 생성
+      // const formData = new FormData();
+      // formData.append('profileImage', file);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '이미지 업로드에 실패했습니다.');
-      }
+      // // 파일 업로드 요청
+      // const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile-image`, {
+      //   method: 'POST',
+      //   headers: {
+      //     'x-auth-token': user.token,
+      //     'x-session-id': user.sessionId
+      //   },
+      //   body: formData
+      // });
 
-      const data = await response.json();
+      // if (!response.ok) {
+      //   const errorData = await response.json();
+      //   throw new Error(errorData.message || '이미지 업로드에 실패했습니다.');
+      // }
+
+      // const data = await response.json();
       
       // 로컬 스토리지의 사용자 정보 업데이트
       const updatedUser = {
         ...user,
-        profileImage: data.imageUrl
+        // profileImage: data.imageUrl
+        profileImage: uploadedUrl
       };
       localStorage.setItem('user', JSON.stringify(updatedUser));
 
       // 부모 컴포넌트에 변경 알림
-      onImageChange(data.imageUrl);
+      // onImageChange(data.imageUrl);
+      onImageChange(uploadedUrl);
 
       // 전역 이벤트 발생
       window.dispatchEvent(new Event('userProfileUpdate'));
@@ -114,18 +185,20 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
         throw new Error('인증 정보가 없습니다.');
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile-image`, {
-        method: 'DELETE',
-        headers: {
-          'x-auth-token': user.token,
-          'x-session-id': user.sessionId
-        }
-      });
+      // const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile-image`, {
+      //   method: 'DELETE',
+      //   headers: {
+      //     'x-auth-token': user.token,
+      //     'x-session-id': user.sessionId
+      //   }
+      // });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '이미지 삭제에 실패했습니다.');
-      }
+      // if (!response.ok) {
+      //   const errorData = await response.json();
+      //   throw new Error(errorData.message || '이미지 삭제에 실패했습니다.');
+      // }
+
+      await deleteImage(previewUrl);
 
       // 로컬 스토리지의 사용자 정보 업데이트
       const updatedUser = {
@@ -162,7 +235,7 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
     };
   }, [previewUrl]);
 
-  // 현재 사용자 정보
+  // 현재 사용자 정보 - 로컬 스토리지 참조
   const currentUser = authService.getCurrentUser();
 
   return (
