@@ -24,6 +24,7 @@ const corsOptions = {
     'http://0.0.0.0:3000',
     'https://0.0.0.0:3000',
     'http://3.35.19.209:3000', // EC2 IP 추가
+    'http://13.124.37.26:3000'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
