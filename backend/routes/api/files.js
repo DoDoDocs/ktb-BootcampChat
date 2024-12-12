@@ -13,6 +13,13 @@ router.post('/upload',
   fileController.uploadFile
 );
 
+// 파일URL 업로드
+router.post('/uploadURL',
+  auth,
+  upload.single('file'),
+  fileController.uploadFileURL
+);
+
 // 파일 다운로드
 router.get('/download/:filename',
   auth,
