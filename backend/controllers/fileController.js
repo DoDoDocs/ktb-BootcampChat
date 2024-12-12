@@ -22,12 +22,24 @@ const isPathSafe = (filepath, directory) => {
   return resolvedPath.startsWith(resolvedDirectory);
 };
 
-const generateSafeFilename = (originalFilename) => {
-  const ext = path.extname(originalFilename || '').toLowerCase();
-  const timestamp = Date.now();
-  const randomBytes = crypto.randomBytes(8).toString('hex');
-  return `${timestamp}_${randomBytes}${ext}`;
-};
+// const generateSafeFilename = (originalFilename) => {
+//   const ext = path.extname(originalFilename || '').toLowerCase();
+//   const timestamp = Date.now();
+//   const randomBytes = crypto.randomBytes(8).toString('hex');
+//   return `${timestamp}_${randomBytes}${ext}`;
+// };
+
+function generateSafeFilename(originalname) {
+  const timestamp = Date.now(); // 타임스탬프 (숫자)
+  const randomString = Math.random().toString(36).substring(2, 15).replace(/[^a-f0-9]/g, ''); // 소문자 a-f와 숫자로만 구성된 랜덤 문자열
+  const extension = path.extname(originalname).toLowerCase().substring(1); // 확장자 (소문자로 변환)
+
+  // 정규식에 맞는 형식으로 파일 이름 생성
+  const safeFilename = `${timestamp}_${randomString}.${extension}`;
+
+  return safeFilename;
+}
+
 
 // 개선된 파일 정보 조회 함수
 const getFileFromRequest = async (req) => {
@@ -132,6 +144,61 @@ exports.uploadFile = async (req, res) => {
     res.status(500).json({
       success: false,
       message: '파일 업로드 중 오류가 발생했습니다.',
+      error: error.message
+    });
+  }
+};
+
+exports.uploadFileURL = async (req, res) => {
+  console.log("@@@@@@uploadFileURL req",req)
+  try {
+    const { fileURL, fileSize, fileType } = req.body;
+
+    if (!fileURL) {
+      return res.status(400).json({
+        success: false,
+        message: '파일 URL이 제공되지 않았습니다.'
+      });
+    }
+
+    // fileURL에서 파일 이름 추출 (마지막 '/' 이후의 문자열)
+    const originalFilename = fileURL.substring(fileURL.lastIndexOf('/') + 1);
+
+    const safeFilename = generateSafeFilename(originalFilename);
+    console.log('@@@@originalFilename, safe', originalFilename, safeFilename)
+
+    // File 모델 인스턴스 생성
+    const file = new File({
+      filename: safeFilename,
+      originalname: originalFilename,
+      mimetype: fileType,
+      size: fileSize,
+      user: req.user.id, // 사용자 인증 정보 연결
+      path: fileURL // S3 URL 저장
+    });
+
+    // 파일 정보 저장
+    await file.save();
+
+    res.status(200).json({
+      success: true,
+      message: '파일 URL 처리 성공',
+      file: {
+        _id: file._id,
+        filename: file.filename,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+        uploadDate: file.uploadDate,
+        url: fileURL // S3 URL 반환
+      }
+    });
+
+  } catch (error) {
+    console.error('File URL processing error:', error);
+    res.status(500).json({
+      success: false,
+      message: '파일 URL 처리 중 오류가 발생했습니다.',
       error: error.message
     });
   }

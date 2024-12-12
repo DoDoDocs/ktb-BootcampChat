@@ -2,6 +2,8 @@ import axios, { isCancel, CancelToken } from 'axios';
 import authService from './authService';
 import { Toast } from '../components/Toast';
 
+import AWS from 'aws-sdk';
+
 class FileService {
   constructor() {
     this.baseUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -9,6 +11,21 @@ class FileService {
     this.retryAttempts = 3;
     this.retryDelay = 1000;
     this.activeUploads = new Map();
+
+    this.bucketName = process.env.NEXT_PUBLIC_S3_BUCKET;
+    this.region = process.env.NEXT_PUBLIC_AWS_REGION;
+    this.accessKeyId = process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID;
+    this.secretAccessKey = process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY;
+
+    // AWS 설정 업데이트
+    AWS.config.update({
+      region: this.region,
+      accessKeyId: this.accessKeyId,
+      secretAccessKey: this.secretAccessKey,
+    });
+
+    this.s3 = new AWS.S3();
+
 
     this.allowedTypes = {
       image: {
@@ -107,6 +124,14 @@ class FileService {
       return validationResult;
     }
 
+    const params = {
+      Bucket: this.bucketName,
+      Key: `files/${file.name}`,
+      Body: file,
+      ContentType: file.type,
+      ACL: 'public-read' // ACL 설정
+    };
+
     try {
       const user = authService.getCurrentUser();
       if (!user?.token || !user?.sessionId) {
@@ -116,33 +141,43 @@ class FileService {
         };
       }
 
-      const formData = new FormData();
-      formData.append('file', file);
+      const data = await this.s3.upload(params).promise()
+
+      const fileURL = data.Location
+      const fileSize = file.size;
+      const fileType = file.type;
+      console.log("@@@fileService upload data", fileURL, fileSize, fileType)
+
 
       const source = CancelToken.source();
       this.activeUploads.set(file.name, source);
+      
 
-      const uploadUrl = this.baseUrl ? 
-        `${this.baseUrl}/api/files/upload` : 
-        '/api/files/upload';
-
-      const response = await axios.post(uploadUrl, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          'x-auth-token': user.token,
-          'x-session-id': user.sessionId
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/files/uploadURL`,
+        {
+          fileURL: fileURL,
+          fileSize: fileSize,
+          fileType: fileType,
         },
-        cancelToken: source.token,
-        withCredentials: true,
-        onUploadProgress: (progressEvent) => {
-          if (onProgress) {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-            onProgress(percentCompleted);
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-auth-token': user.token,
+            'x-session-id': user.sessionId
+          },
+          cancelToken: source.token,
+          withCredentials: true,
+          onUploadProgress: (progressEvent) => {
+            if (onProgress) {
+              const percentCompleted = Math.round(
+                (progressEvent.loaded * 100) / progressEvent.total
+              );
+              onProgress(percentCompleted);
+            }
           }
         }
-      });
+      );
 
       this.activeUploads.delete(file.name);
 
@@ -196,6 +231,8 @@ class FileService {
       return this.handleUploadError(error);
     }
   }
+
+  
   async downloadFile(filename, originalname) {
     try {
       const user = authService.getCurrentUser();
@@ -303,30 +340,10 @@ class FileService {
     }
   }
 
-  getFileUrl(filename, forPreview = false) {
+  getFileUrl(filename) {
     if (!filename) return '';
 
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
-    const endpoint = forPreview ? 'view' : 'download';
-    return `${baseUrl}/api/files/${endpoint}/${filename}`;
-  }
-
-  getPreviewUrl(file, withAuth = true) {
-    if (!file?.filename) return '';
-
-    const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/files/view/${file.filename}`;
-    
-    if (!withAuth) return baseUrl;
-
-    const user = authService.getCurrentUser();
-    if (!user?.token || !user?.sessionId) return baseUrl;
-
-    // URL 객체 생성 전 프로토콜 확인
-    const url = new URL(baseUrl);
-    url.searchParams.append('token', encodeURIComponent(user.token));
-    url.searchParams.append('sessionId', encodeURIComponent(user.sessionId));
-
-    return url.toString();
+    return `https://${this.bucketName}.${this.s3.endpoint.hostname}/files/${filename}`;
   }
 
   getFileType(filename) {

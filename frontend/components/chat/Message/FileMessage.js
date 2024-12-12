@@ -19,6 +19,23 @@ import ReadStatus from '../ReadStatus';
 import fileService from '../../../services/fileService';
 import authService from '../../../services/authService';
 
+import AWS from 'aws-sdk';
+
+const AWS_REGION = process.env.NEXT_PUBLIC_AWS_REGION;
+const AWS_ACCESS_KEY_ID=process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID;
+const AWS_SECRET_ACCESS_KEY=process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY
+const S3_BUCKET=process.env.NEXT_PUBLIC_S3_BUCKET
+
+AWS.config.update({
+  region: AWS_REGION,
+  accessKeyId: AWS_ACCESS_KEY_ID,
+  secretAccessKey: AWS_SECRET_ACCESS_KEY,
+  signatureVersion: 'v4', // 서명 버전 v4 사용
+})
+
+// S3 인스턴스 생성
+const s3 = new AWS.S3();
+
 const FileMessage = ({ 
   msg = {}, 
   isMine = false, 
@@ -34,7 +51,7 @@ const FileMessage = ({
 
   useEffect(() => {
     if (msg?.file) {
-      const url = fileService.getPreviewUrl(msg.file, true);
+      const url = fileService.getFileUrl(msg.file.filename, true);
       setPreviewUrl(url);
       console.debug('Preview URL generated:', {
         filename: msg.file.filename,
@@ -99,6 +116,25 @@ const FileMessage = ({
     />
   );
 
+  const downloadFile = async (originalname) => {
+    console.log("###FileMessage downloadFile originalname", originalname)
+    const params = {
+      Bucket: S3_BUCKET,
+      Key: `files/${originalname}`,
+      Expires: 60, // URL 만료 시간 (초)
+      ResponseContentDisposition: `attachment; filename="${encodeURIComponent(originalname)}"`, // 바로 다운로드 설정
+    };
+  
+    try {
+      const presignedUrl = await s3.getSignedUrlPromise('getObject', params);
+      console.log("파일 다운로드 URL 생성 성공:", presignedUrl);
+      return presignedUrl; // 생성된 Pre-signed URL 반환
+    } catch (err) {
+      console.error("파일 다운로드 URL 생성 실패:", err);
+      throw err; // 에러를 호출한 함수로 전달
+    }
+  };
+
   const handleFileDownload = async (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -114,12 +150,14 @@ const FileMessage = ({
         throw new Error('인증 정보가 없습니다.');
       }
 
-      const baseUrl = fileService.getFileUrl(msg.file.filename, false);
-      const authenticatedUrl = `${baseUrl}?token=${encodeURIComponent(user.token)}&sessionId=${encodeURIComponent(user.sessionId)}&download=true`;
+      // downloadFile 함수를 사용하여 Pre-signed URL 생성
+      const presignedUrl = await downloadFile(getDecodedFilename(msg.file.originalname));
 
+      // Pre-signed URL을 사용하여 파일 다운로드
       const link = document.createElement('a');
-      link.href = authenticatedUrl;
+      link.href = presignedUrl;
       link.download = getDecodedFilename(msg.file.originalname);
+      //link.target = '_blank'; // 새 탭에서 열기 (선택 사항)
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -135,6 +173,8 @@ const FileMessage = ({
     e.stopPropagation();
     setError(null);
 
+    console.log("@@@@FileMessage handleViewInNewTab msg", msg)
+
     try {
       if (!msg.file?.filename) {
         throw new Error('파일 정보가 없습니다.');
@@ -144,8 +184,7 @@ const FileMessage = ({
       if (!user?.token || !user?.sessionId) {
         throw new Error('인증 정보가 없습니다.');
       }
-
-      const baseUrl = fileService.getFileUrl(msg.file.filename, true);
+      const baseUrl = fileService.getFileUrl(msg.file.originalname, true);
       const authenticatedUrl = `${baseUrl}?token=${encodeURIComponent(user.token)}&sessionId=${encodeURIComponent(user.sessionId)}`;
 
       const newWindow = window.open(authenticatedUrl, '_blank');
@@ -161,7 +200,7 @@ const FileMessage = ({
 
   const renderImagePreview = (originalname) => {
     try {
-      if (!msg?.file?.filename) {
+      if (!originalname) {
         return (
           <div className="flex items-center justify-center h-full bg-gray-100">
             <Image className="w-8 h-8 text-gray-400" />
@@ -169,12 +208,14 @@ const FileMessage = ({
         );
       }
 
+
       const user = authService.getCurrentUser();
       if (!user?.token || !user?.sessionId) {
         throw new Error('인증 정보가 없습니다.');
       }
 
-      const previewUrl = fileService.getPreviewUrl(msg.file, true);
+    const previewUrl = fileService.getFileUrl(originalname, true);
+    console.log("###FileMessage previewUrl", previewUrl)
 
       return (
         <div className="bg-transparent-pattern">
